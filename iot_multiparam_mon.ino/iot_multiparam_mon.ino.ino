@@ -3,7 +3,7 @@
 
 // Server and network settings
 AsyncWebServer server(80);
-const char* ssid = "ESP32";  
+const char* ssid = "ESP32";
 const char* password = "12345678";
 IPAddress local_ip(192,168,1,1);
 IPAddress gateway(192,168,1,1);
@@ -25,8 +25,8 @@ void setup() {
   server.on("/", HTTP_GET, handle_OnConnect);     // Serve the main page
   server.on("/start", HTTP_GET, handle_Start);    // Start reading (dummy)
   server.on("/stop", HTTP_GET, handle_Stop);      // Stop reading (dummy)
+  server.on("/data", HTTP_GET, handle_Data);      // Serve sensor data
   server.onNotFound(handle_NotFound);             // Handle unknown requests
-  server.on("/data", HTTP_GET, handle_Data); // Serve sensor data
 
   // Start the server
   server.begin();
@@ -68,22 +68,22 @@ void handle_OnConnect(AsyncWebServerRequest *request) {
     "<div class=\"switch-container\">"
     "<label class=\"switch\"><input type=\"checkbox\" id=\"oximeter-switch\"><span class=\"slider\"></span></label>"
     "<label class=\"switch-label\" for=\"oximeter-switch\"><span>Saturação de Oxigênio</span></label>"
-    "<label class=\"switch\"><input type=\"checkbox\" id=\"ecg-switch\"><span class=\"slider\"></span></label>"
-    "<label class=\"switch-label\" for=\"ecg-switch\"><span>Leitura do ECG</span></label>"
+    "<label class=\"switch\"><input type=\"checkbox\" id=\"heart-rate-switch\"><span class=\"slider\"></span></label>"
+    "<label class=\"switch-label\" for=\"heart-rate-switch\"><span>Frequência Cardíaca</span></label>"
     "</div>"
     "<div class=\"card\"><h2>Saturação de Oxigênio</h2><div class=\"value\" id=\"oximeter-value\">--</div><p>%</p></div>"
-    "<div class=\"card\"><h2>Leitura do ECG</h2><div class=\"value\" id=\"ecg-value\">--</div><p>bpm</p></div>"
-    "<div class=\"card\"><h2>Gráfico de ECG</h2><div class=\"chart-container\"><canvas id=\"ecg-chart\"></canvas></div></div>"
+    "<div class=\"card\"><h2>Frequência Cardíaca</h2><div class=\"value\" id=\"heart-rate-value\">--</div><p>bpm</p></div>"
+    "<div class=\"card\"><h2>Gráfico de Frequência Cardíaca</h2><div class=\"chart-container\"><canvas id=\"heart-rate-chart\"></canvas></div></div>"
     "</main><footer><p>Projeto de Monitoramento de Saúde - UFABC</p></footer>"
     "<script>"
-    "const ctx = document.getElementById('ecg-chart').getContext('2d');"
+    "const ctx = document.getElementById('heart-rate-chart').getContext('2d');"
     "const maxDataPoints = 20;"
-    "const ecgChart = new Chart(ctx, {"
+    "const heartRateChart = new Chart(ctx, {"
     "  type: 'line',"
     "  data: {"
     "    labels: [],"
     "    datasets: [{"
-    "      label: 'ECG',"
+    "      label: 'Frequência Cardíaca',"
     "      data: [],"
     "      borderColor: 'rgb(75, 192, 192)',"
     "      backgroundColor: 'rgba(75, 192, 192, 0.2)',"
@@ -102,7 +102,7 @@ void handle_OnConnect(AsyncWebServerRequest *request) {
     "  }"
     "});"
     "let oximeterInterval = null;"
-    "let ecgInterval = null;"
+    "let heartRateInterval = null;"
     "function startDataCollection() {"
     "  if (document.getElementById('oximeter-switch').checked) {"
     "    if (!oximeterInterval) {"
@@ -119,38 +119,36 @@ void handle_OnConnect(AsyncWebServerRequest *request) {
     "    }"
     "    document.getElementById('oximeter-value').innerText = '--';"
     "  }"
-    "  if (document.getElementById('ecg-switch').checked) {"
-    "    if (!ecgInterval) {"
-    "      ecgInterval = setInterval(() => {"
+    "  if (document.getElementById('heart-rate-switch').checked) {"
+    "    if (!heartRateInterval) {"
+    "      heartRateInterval = setInterval(() => {"
     "        fetch('/data').then(response => response.json()).then(data => {"
-    "          document.getElementById('ecg-value').innerText = data.ecg.toFixed(2);"
+    "          document.getElementById('heart-rate-value').innerText = data.ecg.toFixed(2);"
     "          const now = new Date().toLocaleTimeString();"
-    "          if (ecgChart.data.labels.length >= maxDataPoints) {"
-    "            ecgChart.data.labels.shift();"
-    "            ecgChart.data.datasets[0].data.shift();"
+    "          if (heartRateChart.data.labels.length >= maxDataPoints) {"
+    "            heartRateChart.data.labels.shift();"
+    "            heartRateChart.data.datasets[0].data.shift();"
     "          }"
-    "          ecgChart.data.labels.push(now);"
-    "          ecgChart.data.datasets[0].data.push(data.ecg);"
-    "          ecgChart.update('none');"
+    "          heartRateChart.data.labels.push(now);"
+    "          heartRateChart.data.datasets[0].data.push(data.ecg);"
+    "          heartRateChart.update('none');"
     "        }).catch(error => console.error('Error fetching data:', error));"
     "      }, 700);"
     "    }"
     "  } else {"
-    "    if (ecgInterval) {"
-    "      clearInterval(ecgInterval);"
-    "      ecgInterval = null;"
+    "    if (heartRateInterval) {"
+    "      clearInterval(heartRateInterval);"
+    "      heartRateInterval = null;"
     "    }"
-    "    document.getElementById('ecg-value').innerText = '--';"
+    "    document.getElementById('heart-rate-value').innerText = '--';"
     "  }"
     "}"
     "document.getElementById('oximeter-switch').addEventListener('change', startDataCollection);"
-    "document.getElementById('ecg-switch').addEventListener('change', startDataCollection);"
-    "</script>"
-    "</body></html>"
+    "document.getElementById('heart-rate-switch').addEventListener('change', startDataCollection);"
+    "</script></body></html>"
   );
   request->send(200, "text/html; charset=utf-8", html);
 }
-
 
 // Dummy start sensor reading handler
 void handle_Start(AsyncWebServerRequest *request) {
