@@ -309,8 +309,9 @@ void handle_FileDownload(AsyncWebServerRequest *request) {
   if (SPIFFS.exists("/" + fileName)) {
     File file = SPIFFS.open("/" + fileName, "r");
     if (file) {
+      // Send the file with proper headers
       request->send(file, "text/plain");
-      file.close();
+      // No need to manually close the file, the server will handle it
     } else {
       request->send(500, "text/plain", "Failed to open file");
     }
