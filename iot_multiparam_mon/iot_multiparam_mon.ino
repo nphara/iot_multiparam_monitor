@@ -1,15 +1,24 @@
 #include <FS.h>
 #include <WiFi.h>
+#include <esp_wifi.h>
 #include <ESPAsyncWebServer.h>
 #include <SPIFFS.h>
+#include <Preferences.h>
+
+
+Preferences preferences;
 
 // Server and network settings
 AsyncWebServer server(80);
-const char* ssid = "ESP32";
-const char* password = "12345678";
+const char* ap_ssid = "Multiparametric Monitor";
+const char* ap_password = "12345678";
 IPAddress local_ip(192,168,1,1);
 IPAddress gateway(192,168,1,1);
 IPAddress subnet(255,255,255,0);
+
+// Control variables
+String router_ssid = "";
+String router_password = "";
 
 // Control variable for sensor reading (dummy for now)
 bool isReading = false;
@@ -35,10 +44,16 @@ void setup() {
     chartjs_file.close();
   }
 
+ // Initialize Preferences
+  preferences.begin("wifi-config", false);
+
   // Initialize Wi-Fi in AP mode
-  WiFi.softAP(ssid, password);
+  WiFi.softAP(ap_ssid, ap_password);
   WiFi.softAPConfig(local_ip, gateway, subnet);
   Serial.println("Wi-Fi started in AP mode");
+
+  // Try connecting to router
+  connectToRouter();
 
   // Define server routes
   server.on("/", HTTP_GET, handle_OnConnect);     // Serve the main page
@@ -55,6 +70,19 @@ void setup() {
 
   // Handle admin page
   server.on("/admin", HTTP_GET, handle_Admin);
+
+  server.on("/set-credentials", HTTP_POST, [](AsyncWebServerRequest *request) {
+    String ssid = request->arg("ssid");
+    String password = request->arg("password");
+
+    // Save credentials and reboot
+    preferences.putString("ssid", ssid);
+    preferences.putString("password", password);
+    request->send(200, "text/plain", "Credentials saved! Rebooting...");
+    delay(2000);
+    ESP.restart();
+  });
+
 
   // Handle file deletion
   server.on("/delete", HTTP_GET, handle_Delete);
@@ -97,6 +125,10 @@ void setup() {
 // Main loop - nothing to do for this example
 void loop() {
   // AsyncWebServer handles requests asynchronously
+  // Keep checking Wi-Fi status (STA mode)
+  if (WiFi.status() != WL_CONNECTED) {
+    connectToRouter();
+  }
 }
 
 void listFiles(){
@@ -274,18 +306,70 @@ void handle_Admin(AsyncWebServerRequest *request) {
     String html = F(
         "<!DOCTYPE html><html><head><title>Admin Panel</title></head><body>"
         "<h1>Admin Panel - File Management</h1>"
-        "<h2>Upload a New File</h2>"
-        "<form method=\"POST\" action=\"/upload\" enctype=\"multipart/form-data\">"
-        "<input type=\"file\" name=\"file\">"
-        "<input type=\"submit\" value=\"Upload\">"
-        "</form>"
-        "<h2>Available Files</h2>"
-        "<ul>"
     );
+
+    // Display ESP32 IPs and MAC addresses
+    html += F("<h2>ESP32 Network Information</h2>");
+
+    // Access Point IP and MAC
+    html += "AP IP Address: " + WiFi.softAPIP().toString() + "<br>";
+    html += "AP MAC Address: " + WiFi.softAPmacAddress() + "<br>";
+
+    // Station IP and MAC (if connected to a Wi-Fi network)
+    if (WiFi.status() == WL_CONNECTED) {
+        html += "STA IP Address: " + WiFi.localIP().toString() + "<br>";
+        html += "STA MAC Address: " + WiFi.macAddress() + "<br>";
+    } else {
+        html += "STA IP Address: Not connected<br>";
+        html += "STA MAC Address: " + WiFi.macAddress() + "<br>";
+    }
+
+    // Adding Wi-Fi configuration section
+    html += F(
+        "<h2>Wi-Fi Configuration</h2>"
+        "<form method=\"POST\" action=\"/set-credentials\">"
+        "<label for=\"ssid\">SSID:</label>"
+        "<input type=\"text\" id=\"ssid\" name=\"ssid\"><br><br>"
+        "<label for=\"password\">Password:</label>"
+        "<input type=\"password\" id=\"password\" name=\"password\"><br><br>"
+        "<input type=\"submit\" value=\"Save\">"
+        "</form>"
+    );
+
+    // Adding connected clients section
+    html += F("<h2>Connected Devices</h2>");
+    
+    int numStations = WiFi.softAPgetStationNum();  // Get the number of connected stations
+    html += "Number of connected devices: " + String(numStations) + "<br>";
+
+    if (numStations > 0) {
+        wifi_sta_list_t stationList;
+        tcpip_adapter_sta_list_t adapterList;
+
+        // Get station info (from the ESP-IDF, but usable in Arduino)
+        esp_wifi_ap_get_sta_list(&stationList);
+        tcpip_adapter_get_sta_list(&stationList, &adapterList);
+
+        html += "<ul>";
+        for (int i = 0; i < adapterList.num; i++) {
+            tcpip_adapter_sta_info_t station = adapterList.sta[i];
+            String mac = String(station.mac[0], HEX) + ":" +
+                         String(station.mac[1], HEX) + ":" +
+                         String(station.mac[2], HEX) + ":" +
+                         String(station.mac[3], HEX) + ":" +
+                         String(station.mac[4], HEX) + ":" +
+                         String(station.mac[5], HEX);
+
+            html += "<li>Device " + String(i + 1) + ": " + mac + "</li>";
+        }
+        html += "</ul>";
+    }
 
     // List files in SPIFFS
     File root = SPIFFS.open("/");
     File file = root.openNextFile();
+    html += "<h2>Available Files</h2><ul>";
+    
     while (file) {
         String fileName = file.name();
         html += "<li>" + fileName;
@@ -300,6 +384,12 @@ void handle_Admin(AsyncWebServerRequest *request) {
         file = root.openNextFile();
     }
     html += "</ul>";
+    html += F("<h2>Upload a New File</h2>"
+        "<form method=\"POST\" action=\"/upload\" enctype=\"multipart/form-data\">"
+        "<input type=\"file\" name=\"file\">"
+        "<input type=\"submit\" value=\"Upload\">"
+        "</form>"
+    );
     html += "</body></html>";
 
     request->send(200, "text/html", html);
@@ -341,35 +431,19 @@ void handle_FileDownload(AsyncWebServerRequest *request) {
   }
 
   // Check if the file exists in SPIFFS
-  if (SPIFFS.exists("/" + fileName)) {
-    File file = SPIFFS.open("/" + fileName, "r");
-    if (file) {
-      // Get content type based on the file extension
-      String contentType = getContentType(fileName);
+  String filePath = "/" + fileName;
+  if (SPIFFS.exists(filePath)) {
+    // Get content type based on the file extension
+    String contentType = getContentType(fileName);
 
-      // Allocate buffer for reading file in chunks
-      size_t chunkSize = 1024;  // Chunk size, can be adjusted
-      uint8_t buffer[chunkSize];
-
-      // Send the headers first
-      request->send(200, contentType, "");
-
-      // Read file and send it in chunks
-      while (file.available()) {
-        size_t bytesRead = file.read(buffer, chunkSize);
-        request->client()->write(reinterpret_cast<const char*>(buffer), bytesRead);  // Write chunk to the client
-      }
-
-      file.close();  // Close the file after streaming
-    } else {
-      // Failed to open the file
-      request->send(500, "text/plain", "Failed to open file");
-    }
+    // Send the file using the SPIFFS send method
+    request->send(SPIFFS, filePath, contentType);
   } else {
     // File not found
     request->send(404, "text/plain", "File not found");
   }
 }
+
 
 void handle_Delete(AsyncWebServerRequest *request) {
     Serial.println("Delete handler called");
@@ -423,4 +497,29 @@ void handle_SimpleFile(AsyncWebServerRequest *request) {
 // Handle 404 errors
 void handle_NotFound(AsyncWebServerRequest *request) {
   request->send(404, "text/plain", "404: Not Found");
+}
+
+void connectToRouter() {
+  router_ssid = preferences.getString("ssid", "");
+  router_password = preferences.getString("password", "");
+
+  if (router_ssid != "") {
+    WiFi.begin(router_ssid.c_str(), router_password.c_str());
+    Serial.print("Connecting to ");
+    Serial.println(router_ssid);
+
+    unsigned long start = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - start < 10000) {
+      delay(500);
+      Serial.print(".");
+    }
+
+    if (WiFi.status() == WL_CONNECTED) {
+      Serial.println("\nConnected to router!");
+      Serial.print("IP Address: ");
+      Serial.println(WiFi.localIP());
+    } else {
+      Serial.println("\nFailed to connect to router.");
+    }
+  }
 }
