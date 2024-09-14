@@ -30,17 +30,17 @@
     <main>
         <div class="switch-container">
             <label class="switch">
-                <input type="checkbox" id="oximeter-switch">
+                <input type="checkbox" id="max30102">
                 <span class="slider"></span>
             </label>
-            <label class="switch-label" for="oximeter-switch">
+            <label class="switch-label" for="max30102">
                 <span>Saturação de Oxigênio</span>
             </label>
             <label class="switch">
-                <input type="checkbox" id="ecg-switch">
+                <input type="checkbox" id="ad8232">
                 <span class="slider"></span>
             </label>
-            <label class="switch-label" for="ecg-switch">
+            <label class="switch-label" for="ad8232">
                 <span>Leitura do ECG</span>
             </label>
         </div>
@@ -78,12 +78,20 @@
         let oximeterInterval = null;
         let ecgInterval = null;
         function startDataCollection() {
-            if (document.getElementById('oximeter-switch').checked) {
+            if (document.getElementById('max30102').checked) {
                 if (!oximeterInterval) {
+                    console.log("Starting SpO2 data collection...");
                     oximeterInterval = setInterval(() => {
-                        fetch('/data').then(response => response.json()).then(data => {
-                            document.getElementById('oximeter-value').innerText = data.oximeter.toFixed(2);
-                        }).catch(error => console.error('Error fetching data:', error));
+                        fetch('/data')
+                            .then(response => {
+                                console.log("Data fetched:", response);
+                                return response.json();
+                            })
+                            .then(data => {
+                                console.log("Parsed data:", data);
+                                document.getElementById('oximeter-value').innerText = data.SpO2.toFixed(2);  // Display SpO2
+                            })
+                            .catch(error => console.error('Error fetching SpO2 data:', error));
                     }, 700);
                 }
             } else {
@@ -93,20 +101,31 @@
                     document.getElementById('oximeter-value').innerText = '--';
                 }
             }
-            if (document.getElementById('ecg-switch').checked) {
+
+            if (document.getElementById('ad8232').checked) {
                 if (!ecgInterval) {
+                    console.log("Starting ECG data collection...");
                     ecgInterval = setInterval(() => {
-                        fetch('/data').then(response => response.json()).then(data => {
-                            document.getElementById('ecg-value').innerText = data.ecg.toFixed(2);
-                            const now = new Date().toLocaleTimeString();
-                            if (ecgChart.data.labels.length >= maxDataPoints) {
-                                ecgChart.data.labels.shift();
-                                ecgChart.data.datasets[0].data.shift();
-                            }
-                            ecgChart.data.labels.push(now);
-                            ecgChart.data.datasets[0].data.push(data.ecg);
-                            ecgChart.update('none');
-                        }).catch(error => console.error('Error fetching data:', error));
+                        fetch('/data')
+                            .then(response => {
+                                console.log("Data fetched:", response);
+                                return response.json();
+                            })
+                            .then(data => {
+                                console.log("Parsed ECG data:", data);
+                                document.getElementById('ecg-value').innerText = data.ecg.toFixed(2);  // Display ECG
+                                
+                                // Update the chart
+                                const now = new Date().toLocaleTimeString();
+                                if (ecgChart.data.labels.length >= maxDataPoints) {
+                                    ecgChart.data.labels.shift();
+                                    ecgChart.data.datasets[0].data.shift();
+                                }
+                                ecgChart.data.labels.push(now);
+                                ecgChart.data.datasets[0].data.push(data.ecg);
+                                ecgChart.update('none');
+                            })
+                            .catch(error => console.error('Error fetching ECG data:', error));
                     }, 700);
                 }
             } else {
@@ -116,9 +135,12 @@
                     document.getElementById('ecg-value').innerText = '--';
                 }
             }
-        }
-        document.getElementById('oximeter-switch').addEventListener('change', startDataCollection);
-        document.getElementById('ecg-switch').addEventListener('change', startDataCollection);
+}
+
+// Attach event listeners
+document.getElementById('max30102').addEventListener('change', startDataCollection);
+document.getElementById('ad8232').addEventListener('change', startDataCollection);
+
     </script>
 </body>
 </html>
