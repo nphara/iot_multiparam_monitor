@@ -194,11 +194,11 @@ void handle_Stop(AsyncWebServerRequest *request) {
 // Handle sensor data request
 void handle_Data(AsyncWebServerRequest *request) {
   // Dummy data values for example
-  float oximeterValue = 98.0;  // Example oximeter value
+  float SpO2value = 98.0;  // Example oximeter value
   float ecgValue = 75.0;       // Example ECG value
 
   String json = "{";
-  json += "\"oximeter\":" + String(oximeterValue) + ",";
+  json += "\"SpO2\":" + String(SpO2value) + ",";
   json += "\"ecg\":" + String(ecgValue);
   json += "}";
 
