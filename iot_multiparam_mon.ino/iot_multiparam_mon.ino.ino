@@ -309,9 +309,9 @@ void handle_FileDownload(AsyncWebServerRequest *request) {
   if (SPIFFS.exists("/" + fileName)) {
     File file = SPIFFS.open("/" + fileName, "r");
     if (file) {
-      // Send the file with proper headers
-      request->send(file, "text/plain");
-      // No need to manually close the file, the server will handle it
+      request->send(file, "text/plain", [file]() {
+        file.close();
+      });
     } else {
       request->send(500, "text/plain", "Failed to open file");
     }
@@ -319,6 +319,21 @@ void handle_FileDownload(AsyncWebServerRequest *request) {
     request->send(404, "text/plain", "File not found");
   }
 }
+
+// void handle_FileDownload(AsyncWebServerRequest *request) {
+//   String fileName = request->getParam("file")->value();
+//   if (SPIFFS.exists("/" + fileName)) {
+//     File file = SPIFFS.open("/" + fileName, "r");
+//     if (file) {
+//       request->send(file, "text/plain");
+//       file.close();
+//     } else {
+//       request->send(500, "text/plain", "Failed to open file");
+//     }
+//   } else {
+//     request->send(404, "text/plain", "File not found");
+//   }
+// }
 
 void handle_Delete(AsyncWebServerRequest *request) {
     Serial.println("Delete handler called");
