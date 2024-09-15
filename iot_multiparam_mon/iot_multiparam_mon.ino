@@ -57,15 +57,29 @@ void setup() {
 
   // Define server routes
   server.on("/", HTTP_GET, handle_OnConnect);     // Serve the main page
+
   server.on("/start", HTTP_GET, handle_Start);    // Start reading (dummy)
+  
   server.on("/stop", HTTP_GET, handle_Stop);      // Stop reading (dummy)
+  
   server.on("/data", HTTP_GET, handle_Data);      // Serve sensor data
+
+  // Route to serve the SpO2 and BPM data from MAX30102
+  server.on("/max30102-data", HTTP_GET, handle_Max30102_Data);
+  
+  // Route to serve the ECG data from AD8232
+  server.on("/ad8232-data", HTTP_GET, handle_AD8232_Data);
+
+  
   server.on("/chart.js", HTTP_GET, handle_ChartJS); // Serve Chart.js file
+  
    // Route to handle file uploads
   server.on("/upload", HTTP_POST, [](AsyncWebServerRequest *request) {
     request->send(200, "text/plain", "File Uploaded");
   }, handle_Upload);
+
   server.on("/files", HTTP_GET, handle_FileDownload);
+  
   server.onNotFound(handle_NotFound);             // Handle unknown requests
 
   // Handle admin page
@@ -117,7 +131,6 @@ void setup() {
   Serial.println("HTTP server started");
 }
 
-// Main loop - nothing to do for this example
 void loop() {
   // AsyncWebServer handles requests asynchronously
   // Keep checking Wi-Fi status (STA mode)
@@ -137,6 +150,7 @@ void listFiles(){
     file = root.openNextFile();
   }
 }
+
 // Handle the main page request
 void handle_OnConnect(AsyncWebServerRequest *request) {
   File file = SPIFFS.open("/index.html", "r");
@@ -220,6 +234,44 @@ void handle_Data(AsyncWebServerRequest *request) {
 
     // Optionally, you can monitor heap size here as well
     Serial.printf("Heap after sending data: %d bytes\n", ESP.getFreeHeap());
+}
+
+void handle_Max30102_Data(AsyncWebServerRequest *request) {
+    // Replace these dummy values with actual sensor data
+    float SpO2value = 98.5;  // Example SpO2 value
+    float BPMvalue = 72.3;   // Example BPM value
+
+    String json = "{";
+    json += "\"SpO2\":" + String(SpO2value) + ",";
+    json += "\"BPM\":" + String(BPMvalue);
+    json += "}";
+
+    // Monitor heap size before sending the response
+    Serial.printf("Heap before sending MAX30102 data: %d bytes\n", ESP.getFreeHeap());
+
+    // Send the JSON response for SpO2 and BPM
+    request->send(200, "application/json", json);
+
+    // Optionally, monitor heap size after
+    Serial.printf("Heap after sending MAX30102 data: %d bytes\n", ESP.getFreeHeap());
+}
+
+void handle_AD8232_Data(AsyncWebServerRequest *request) {
+    // Replace this dummy value with actual ECG sensor data
+    float ecgValue = 1.2;  // Example ECG value
+
+    String json = "{";
+    json += "\"ecg\":" + String(ecgValue);
+    json += "}";
+
+    // Monitor heap size before sending the response
+    Serial.printf("Heap before sending AD8232 data: %d bytes\n", ESP.getFreeHeap());
+
+    // Send the JSON response for ECG
+    request->send(200, "application/json", json);
+
+    // Optionally, monitor heap size after
+    Serial.printf("Heap after sending AD8232 data: %d bytes\n", ESP.getFreeHeap());
 }
 
 bool checkAvailableSpace(size_t fileSize) {
@@ -460,7 +512,6 @@ void handle_FileDownload(AsyncWebServerRequest *request) {
     request->send(404, "text/plain", "File not found");
   }
 }
-
 
 void handle_Delete(AsyncWebServerRequest *request) {
     Serial.println("Delete handler called");
