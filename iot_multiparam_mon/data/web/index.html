@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Monitoramento de Saúde em Tempo Real</title>
+    <script src="/chart.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f4f4f4; margin: 0; padding: 0; }
+        header { background-color: #007bff; color: #fff; padding: 20px; text-align: center; }
+        main { padding: 20px; max-width: 1200px; margin: 0 auto; }
+        .card { background-color: #fff; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+        .chart-container { position: relative; width: 100%; height: 50vh; max-width: 1000px; margin: 0 auto; }
+        canvas { width: 100% !important; height: auto !important; }
+        .switch-container { display: flex; justify-content: center; margin-bottom: 20px; gap: 20px; }
+        .switch { position: relative; display: inline-block; width: 100px; height: 34px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 34px; }
+        .slider:before { position: absolute; content: ""; height: 26px; width: 26px; border-radius: 50%; left: 4px; bottom: 4px; background-color: white; transition: .4s; }
+        input:checked + .slider { background-color: #007bff; }
+        input:checked + .slider:before { transform: translateX(66px); }
+        .switch-label { margin: 0; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+        .slider-control { margin-top: 20px; text-align: center; }
+        .slider-control input { width: 80%; }
+    </style>
+</head>
+<body>
+    <header><h1>Monitoramento de Saúde em Tempo Real</h1></header>
+    <main>
+        <div class="switch-container">
+            <label class="switch">
+                <input type="checkbox" id="max30102">
+                <span class="slider"></span>
+            </label>
+            <label class="switch-label" for="max30102">
+                <span>Saturação de Oxigênio</span>
+            </label>
+            <label class="switch">
+                <input type="checkbox" id="ad8232">
+                <span class="slider"></span>
+            </label>
+            <label class="switch-label" for="ad8232">
+                <span>Leitura do ECG</span>
+            </label>
+        </div>
+        <div class="card"><h2>Saturação de Oxigênio</h2><div class="value" id="oximeter-value">--</div><p>%</p></div>
+        <div class="card"><h2>Leitura do ECG</h2><div class="value" id="ecg-value">--</div><p>bpm</p></div>
+        <div class="card"><h2>Gráfico de ECG</h2><div class="chart-container"><canvas id="ecg-chart"></canvas></div></div>
+
+        <!-- Slider control to adjust the ECG timing window -->
+        <div class="slider-control">
+            <label for="ecg-timing">Ajustar janela de tempo (segundos): </label>
+            <input type="range" id="ecg-timing" min="1" max="20" value="10" oninput="updateTimingWindow(this.value)">
+            <span id="timing-value">10s</span>
+        </div>
+    </main>
+
+    <script>
+        const ctx = document.getElementById('ecg-chart').getContext('2d');
+        let maxDataPoints = 2000;
+        const ecgChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Leitura do ECG',
+                    data: [],
+                    borderColor: 'rgb(75, 192, 192)',
+                    backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                    fill: true,
+                    tension: 0.1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: { duration: 0 },
+                scales: {
+                    x: { display: true, title: { display: true, text: 'Tempo' } },
+                    y: { display: true, title: { display: true, text: 'BPM' } }
+                }
+            }
+        });
+
+        let oximeterInterval = null;
+        let ecgInterval = null;
+
+        function startDataCollection() {
+            if (document.getElementById('max30102').checked) {
+                if (!oximeterInterval) {
+                    console.log("Starting SpO2 data collection...");
+                    oximeterInterval = setInterval(() => {
+                        fetch('/max30102')
+                            .then(response => response.json())
+                            .then(data => {
+                                document.getElementById('oximeter-value').innerText = data.SpO2.toFixed(2); 
+                            })
+                            .catch(error => console.error('Error fetching SpO2 data:', error));
+                    }, 1000);
+                }
+            } else {
+                clearInterval(oximeterInterval);
+                oximeterInterval = null;
+                document.getElementById('oximeter-value').innerText = '--';
+            }
+
+            if (document.getElementById('ad8232').checked) {
+                if (!ecgInterval) {
+                    console.log("Starting ECG data collection...");
+                    ecgInterval = setInterval(() => {
+                        fetch('/ad8232')
+                            .then(response => response.json())
+                            .then(data => {
+                                document.getElementById('ecg-value').innerText = data.ecg.toFixed(2);
+
+                                const now = new Date().toLocaleTimeString();
+                                if (ecgChart.data.labels.length >= maxDataPoints) {
+                                    ecgChart.data.labels.shift();
+                                    ecgChart.data.datasets[0].data.shift();
+                                }
+                                ecgChart.data.labels.push(now);
+                                ecgChart.data.datasets[0].data.push(data.ecg);
+                                ecgChart.update('none');
+                            })
+                            .catch(error => console.error('Error fetching ECG data:', error));
+                    }, 5);  // Update rate for 200Hz (every 5ms)
+                }
+            } else {
+                clearInterval(ecgInterval);
+                ecgInterval = null;
+                document.getElementById('ecg-value').innerText = '--';
+            }
+        }
+
+        function updateTimingWindow(value) {
+            const timingValueSpan = document.getElementById('timing-value');
+            timingValueSpan.textContent = value + 's';
+            maxDataPoints = value * 200; // Adjust max data points based on the timing window
+        }
+
+        document.getElementById('max30102').addEventListener('change', startDataCollection);
+        document.getElementById('ad8232').addEventListener('change', startDataCollection);
+
+    </script>
+</body>
+</html>
