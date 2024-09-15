@@ -36,13 +36,13 @@ void setup() {
   // List files in SPIFFS for debugging
   listFiles();
   
-  File chartjs_file = SPIFFS.open("/chart.js", "r");
-  if (!chartjs_file) {
-    Serial.println("Failed to open chart.js file");
-  } else {
-    Serial.println("Successfully opened chart.js file");
-    chartjs_file.close();
-  }
+  // File chartjs_file = SPIFFS.open("/chart.js", "r");
+  // if (!chartjs_file) {
+  //   Serial.println("Failed to open chart.js file");
+  // } else {
+  //   Serial.println("Successfully opened chart.js file");
+  //   chartjs_file.close();
+  // }
 
  // Initialize Preferences
   preferences.begin("wifi-config", false);
@@ -83,7 +83,6 @@ void setup() {
     ESP.restart();
   });
 
-
   // Handle file deletion
   server.on("/delete", HTTP_GET, handle_Delete);
 
@@ -109,14 +108,10 @@ void setup() {
       }
     });
 
-  // server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-  //   request->send(200, "text/html", 
-  //   "<form method='POST' action='/upload' enctype='multipart/form-data'>"
-  //   "<input type='file' name='file' accept='.js,.html,.css'>"
-  //   "<input type='submit' value='Upload'>"
-  //   "</form>");
-  // });
-
+  Serial.printf("Available heap: %d bytes\n", ESP.getFreeHeap());
+   // Check SPIFFS info
+    Serial.printf("SPIFFS total space: %d bytes\n", SPIFFS.totalBytes());
+    Serial.printf("SPIFFS used space: %d bytes\n", SPIFFS.usedBytes());
   // Start the server
   server.begin();
   Serial.println("HTTP server started");
@@ -156,27 +151,42 @@ void handle_OnConnect(AsyncWebServerRequest *request) {
 
 // Handle the Chart.js file request
 void handle_ChartJS(AsyncWebServerRequest *request) {
-  File chartfile = SPIFFS.open("/chart.js.gz", "r");
-  if (!chartfile) {
-    Serial.println("Failed to open chart.js.gz file");
-    request->send(404, "text/plain; charset=UTF-8", "File not found");
-    return;
-  }
-  Serial.println("Serving compressed chart.js file");
+    // Monitor heap size before serving the file
+    Serial.printf("Heap before serving file: %d bytes\n", ESP.getFreeHeap());
 
-  // Debug: Read and log file content
-  // String content = file.readString();
-  // Serial.println("File content:");
-  // Serial.println(content);
+    // Open the gzip file from SPIFFS
+    File chartfile = SPIFFS.open("/chart.js.gz", "r");
+    if (!chartfile) {
+        Serial.println("Failed to open chart.js.gz file");
+        request->send(404, "text/plain; charset=UTF-8", "File not found");
+        return;
+    }
 
-  // request->send(chartfile, "application/javascript");
-  // chartfile.close();
+    // Debug: Log the file size
+    Serial.printf("File size: %d bytes\n", chartfile.size());
 
-  // send compressed in chunks
-  AsyncWebServerResponse *response = request->beginResponse(chartfile, "application/javascript");
-  response->addHeader("Content-Encoding", "gzip");
-  request->send(response);
-  chartfile.close();
+    // Create a response stream for the file with proper buffering
+    AsyncWebServerResponse *response = request->beginChunkedResponse("application/javascript", 
+        [chartfile](uint8_t *buffer, size_t maxLen, size_t index) mutable -> size_t {
+            // Check if we're at the end of the file
+            if (chartfile.available()) {
+                // Read a chunk of data from the file
+                size_t bytesRead = chartfile.read(buffer, maxLen);
+                return bytesRead;
+            } else {
+                // If no more data, close the file and return 0
+                chartfile.close();
+                return 0;
+            }
+        }
+    );
+
+    response->addHeader("Content-Encoding", "gzip"); // Serve as a gzip file
+
+    // Monitor heap size during file serving
+    Serial.printf("Heap during file serving: %d bytes\n", ESP.getFreeHeap());
+
+    request->send(response);
 }
 
 // Dummy start sensor reading handler
@@ -193,16 +203,23 @@ void handle_Stop(AsyncWebServerRequest *request) {
 
 // Handle sensor data request
 void handle_Data(AsyncWebServerRequest *request) {
-  // Dummy data values for example
-  float SpO2value = 98.0;  // Example oximeter value
-  float ecgValue = 75.0;       // Example ECG value
+    // Dummy data values for example
+    float SpO2value = 98.0;  // Example oximeter value
+    float ecgValue = 75.0;   // Example ECG value
 
-  String json = "{";
-  json += "\"SpO2\":" + String(SpO2value) + ",";
-  json += "\"ecg\":" + String(ecgValue);
-  json += "}";
+    String json = "{";
+    json += "\"SpO2\":" + String(SpO2value) + ",";
+    json += "\"ecg\":" + String(ecgValue);
+    json += "}";
+    
+    // Monitor heap size before sending the response
+    Serial.printf("Heap before sending data: %d bytes\n", ESP.getFreeHeap());
 
-  request->send(200, "application/json", json);
+    // Send the JSON response
+    request->send(200, "application/json", json);
+
+    // Optionally, you can monitor heap size here as well
+    Serial.printf("Heap after sending data: %d bytes\n", ESP.getFreeHeap());
 }
 
 bool checkAvailableSpace(size_t fileSize) {
