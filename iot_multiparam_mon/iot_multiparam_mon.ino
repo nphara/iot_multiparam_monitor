@@ -4,7 +4,9 @@
 #include <ESPAsyncWebServer.h>
 #include <SPIFFS.h>
 #include <Preferences.h>
-
+#include <Wire.h>
+#include "MAX30105.h"
+#include "spo2_algorithm.h"
 
 Preferences preferences;
 
@@ -16,17 +18,48 @@ IPAddress local_ip(192,168,1,1);
 IPAddress gateway(192,168,1,1);
 IPAddress subnet(255,255,255,0);
 
-// Control variables
 String router_ssid = "";
 String router_password = "";
 
-// Control variable for sensor reading (dummy for now)
+// sensor max30102
+#define I2C_SDA 21
+#define I2C_SCL 22
+#define WIRE Wire 
+MAX30105 particleSensor;
 bool isReading = false;
+volatile bool max30102Active = false;
+volatile float SpO2value = 0.0;  // Global variable for SpO2 value
+volatile float HRvalue = 0.0;   // Global variable for BPM value
 
-// Initialize the ESP32 Wi-Fi and Web Server
+#define BUFFER_SIZE 100
+uint32_t irBuffer[BUFFER_SIZE];
+uint32_t redBuffer[BUFFER_SIZE];
+int32_t bufferLength;
+int32_t spo2;
+int8_t validSPO2;
+int32_t heartRate;
+int8_t validHeartRate;
+
+unsigned long max30102Interval = 0;
+
+// sensor ad8232
+volatile bool ad8232Active = false;
+
 void setup() {
   Serial.begin(115200);
 
+  byte ledBrightness = 60; //Options: 0=Off to 255=50mA
+  byte sampleAverage = 4; //Options: 1, 2, 4, 8, 16, 32
+  byte ledMode = 2; //Options: 1 = Red only, 2 = Red + IR, 3 = Red + IR + Green
+  byte sampleRate = 100; //Options: 50, 100, 200, 400, 800, 1000, 1600, 3200
+  int pulseWidth = 411; //Options: 69, 118, 215, 411
+  int adcRange = 4096; //Options: 2048, 4096, 8192, 16384
+
+  if (!particleSensor.begin(Wire, I2C_SPEED_FAST)) {
+    Serial.println(F("MAX30105 was not found. Please check wiring/power."));
+    while (1);
+  }
+  
   // Initialize SPIFFS
   if (!SPIFFS.begin(true)) {
     Serial.println("An error occurred while mounting SPIFFS");
@@ -36,14 +69,6 @@ void setup() {
   // List files in SPIFFS for debugging
   listFiles();
   
-  // File chartjs_file = SPIFFS.open("/chart.js", "r");
-  // if (!chartjs_file) {
-  //   Serial.println("Failed to open chart.js file");
-  // } else {
-  //   Serial.println("Successfully opened chart.js file");
-  //   chartjs_file.close();
-  // }
-
  // Initialize Preferences
   preferences.begin("wifi-config", false);
 
@@ -66,11 +91,12 @@ void setup() {
 
   // Route to serve the SpO2 and BPM data from MAX30102
   server.on("/max30102-data", HTTP_GET, handle_Max30102_Data);
+  server.on("/control-max30102", HTTP_GET, handle_Max30102Control);
   
   // Route to serve the ECG data from AD8232
   server.on("/ad8232-data", HTTP_GET, handle_AD8232_Data);
+  server.on("/control-ad8232", HTTP_GET, handle_Ad8232Control);
 
-  
   server.on("/chart.js", HTTP_GET, handle_ChartJS); // Serve Chart.js file
   
    // Route to handle file uploads
@@ -122,16 +148,64 @@ void setup() {
       }
     });
 
-  Serial.printf("Available heap: %d bytes\n", ESP.getFreeHeap());
+  Serial.printf("[INFO] Available heap: %d bytes\n", ESP.getFreeHeap());
    // Check SPIFFS info
-    Serial.printf("SPIFFS total space: %d bytes\n", SPIFFS.totalBytes());
-    Serial.printf("SPIFFS used space: %d bytes\n", SPIFFS.usedBytes());
+    Serial.printf("[INFO] SPIFFS total space: %d bytes\n", SPIFFS.totalBytes());
+    Serial.printf("[INFO] SPIFFS used space: %d bytes\n", SPIFFS.usedBytes());
   // Start the server
   server.begin();
-  Serial.println("HTTP server started");
+  Serial.println("[INFO] HTTP server started");
 }
 
 void loop() {
+
+
+  // Check if MAX30102 is active
+    if (max30102Active) {
+        // Collect data if interval has elapsed
+        if (millis() - max30102Interval >= 1000) {
+            bufferLength = 100; // Buffer length of 100 stores 4 seconds of samples running at 25sps
+
+            // Read the first 100 samples
+            for (byte i = 0; i < bufferLength; i++) {
+                while (particleSensor.available() == false) // Do we have new data?
+                    particleSensor.check(); // Check the sensor for new data
+
+                redBuffer[i] = particleSensor.getRed();
+                irBuffer[i] = particleSensor.getIR();
+                particleSensor.nextSample(); // Move to next sample
+            }
+
+            // Calculate heart rate and SpO2
+            maxim_heart_rate_and_oxygen_saturation(irBuffer, bufferLength, redBuffer, &spo2, &validSPO2, &heartRate, &validHeartRate);
+
+            // Update global variables with the latest readings
+            SpO2value = (validSPO2 == 1) ? spo2 : 0;
+            HRvalue = (validHeartRate == 1) ? heartRate : 0;
+
+            // Optionally, send the data to the client or process further
+            Serial.print(F("SpO2: "));
+            Serial.print(SpO2value);
+            Serial.print(F(", HR: "));
+            Serial.println(HRvalue);
+
+            max30102Interval = millis(); // Reset the interval timer
+        }
+    } else {
+        // Handle deactivation of MAX30102
+        // Optionally put the sensor into a low-power state if supported
+    }
+
+    // Check if AD8232 is active
+    if (ad8232Active) {
+        // Handle AD8232 data collection and processing
+        // Depending on how you interface with AD8232, process the data here
+    } else {
+        // Handle deactivation of AD8232
+        // Optionally put the sensor into a low-power state if supported
+    }
+
+
   // AsyncWebServer handles requests asynchronously
   // Keep checking Wi-Fi status (STA mode)
   if (WiFi.status() != WL_CONNECTED) {
@@ -227,33 +301,61 @@ void handle_Data(AsyncWebServerRequest *request) {
     json += "}";
     
     // Monitor heap size before sending the response
-    Serial.printf("Heap before sending data: %d bytes\n", ESP.getFreeHeap());
+    // Serial.printf("[INFO] Heap before sending data: %d bytes\n", ESP.getFreeHeap());
 
     // Send the JSON response
     request->send(200, "application/json", json);
 
     // Optionally, you can monitor heap size here as well
-    Serial.printf("Heap after sending data: %d bytes\n", ESP.getFreeHeap());
+    // Serial.printf("[INFO] Heap after sending data: %d bytes\n", ESP.getFreeHeap());
+}
+
+void handle_Max30102Control(AsyncWebServerRequest *request) {
+    String action = request->getParam("action")->value();
+
+    if (action == "start") {
+        max30102Active = true;
+        request->send(200, "application/json", "{\"status\":\"MAX30102 started\"}");
+    } else if (action == "stop") {
+        max30102Active = false;
+        request->send(200, "application/json", "{\"status\":\"MAX30102 stopped\"}");
+    } else {
+        request->send(400, "application/json", "{\"error\":\"Invalid action\"}");
+    }
 }
 
 void handle_Max30102_Data(AsyncWebServerRequest *request) {
     // Replace these dummy values with actual sensor data
     float SpO2value = 98.5;  // Example SpO2 value
-    float BPMvalue = 72.3;   // Example BPM value
+    float HRvalue = 72.3;   // Example BPM value
 
     String json = "{";
     json += "\"SpO2\":" + String(SpO2value) + ",";
-    json += "\"BPM\":" + String(BPMvalue);
+    json += "\"HR\":" + String(HRvalue);
     json += "}";
 
     // Monitor heap size before sending the response
-    Serial.printf("Heap before sending MAX30102 data: %d bytes\n", ESP.getFreeHeap());
+    // Serial.printf("[INFO] Heap before sending MAX30102 data: %d bytes\n", ESP.getFreeHeap());
 
     // Send the JSON response for SpO2 and BPM
     request->send(200, "application/json", json);
 
     // Optionally, monitor heap size after
-    Serial.printf("Heap after sending MAX30102 data: %d bytes\n", ESP.getFreeHeap());
+    // Serial.printf("[INFO] Heap after sending MAX30102 data: %d bytes\n", ESP.getFreeHeap());
+}
+
+void handle_Ad8232Control(AsyncWebServerRequest *request) {
+    String action = request->getParam("action")->value();
+
+    if (action == "start") {
+        ad8232Active = true;
+        request->send(200, "application/json", "{\"status\":\"AD8232 started\"}");
+    } else if (action == "stop") {
+        ad8232Active = false;
+        request->send(200, "application/json", "{\"status\":\"AD8232 stopped\"}");
+    } else {
+        request->send(400, "application/json", "{\"error\":\"Invalid action\"}");
+    }
 }
 
 void handle_AD8232_Data(AsyncWebServerRequest *request) {
@@ -265,13 +367,13 @@ void handle_AD8232_Data(AsyncWebServerRequest *request) {
     json += "}";
 
     // Monitor heap size before sending the response
-    Serial.printf("Heap before sending AD8232 data: %d bytes\n", ESP.getFreeHeap());
+    // Serial.printf("[INFO] Heap before sending AD8232 data: %d bytes\n", ESP.getFreeHeap());
 
     // Send the JSON response for ECG
     request->send(200, "application/json", json);
 
     // Optionally, monitor heap size after
-    Serial.printf("Heap after sending AD8232 data: %d bytes\n", ESP.getFreeHeap());
+    // Serial.printf("[INFO] Heap after sending AD8232 data: %d bytes\n", ESP.getFreeHeap());
 }
 
 bool checkAvailableSpace(size_t fileSize) {
@@ -330,46 +432,6 @@ void handle_Upload(AsyncWebServerRequest *request, const String& filename, size_
     request->send(200, "text/plain", "File uploaded successfully");
   }
 }
-
-
-// void handle_Upload(AsyncWebServerRequest *request, const String& filename, size_t index, uint8_t *data, size_t len, bool final) {
-//   if (!index) {
-//     // Check if there's enough space before starting the upload
-//     if (!checkAvailableSpace(len)) {
-//       Serial.println("Not enough space for the file.");
-//       request->send(500, "text/plain", "Not enough space to upload the file.");
-//       return;
-//     }
-
-//     // Open the file for writing
-//     Serial.printf("UploadStart: %s\n", filename.c_str());
-//     if (!SPIFFS.exists("/" + filename)) {
-//       SPIFFS.remove("/" + filename);  // Overwrite existing file
-//     }
-//     File file = SPIFFS.open("/" + filename, FILE_WRITE);
-//     if (!file) {
-//       Serial.println("Failed to open file for writing");
-//       return;
-//     }
-//   }
-//   // Write the received data
-//   File file = SPIFFS.open("/" + filename, FILE_APPEND);
-//   if (file) {
-//     if (file.write(data, len) != len) {
-//       Serial.println("Failed to write file");
-//     } else {
-//       Serial.printf("Wrote %u bytes\n", len);
-//     }
-//     file.close();
-//   } else {
-//     Serial.println("Failed to open file for appending");
-//   }
-
-//   // Finalize the file write
-//   if (final) {
-//     Serial.printf("UploadEnd: %s (%u bytes)\n", filename.c_str(), index + len);
-//   }
-// }
 
 void handle_Admin(AsyncWebServerRequest *request) {
     String html = F(

@@ -52,8 +52,8 @@
             <input type="range" id="time-window-slider" min="1" max="20" value="10">
             <span id="time-window-value">10s</span>
         </div>
-        <div class="card"><h2>SpO2</h2><div class="value" id="oximeter-value">--</div><p>%</p></div>
-        <div class="card"><h2>FC</h2><div class="value" id="bpm-value">--</div><p>bpm</p></div>
+        <div class="card"><h2>SpO2</h2><div class="value" id="spo2-value">--</div><p>%</p></div>
+        <div class="card"><h2>FC</h2><div class="value" id="hr-value">--</div><p>bpm</p></div>
         <div class="card"><h2>Gráfico de ECG</h2><div class="chart-container"><canvas id="ecg-chart"></canvas></div></div>
     </main>
     <script>
@@ -106,9 +106,9 @@
                             .then(response => response.json())
                             .then(data => {
                                 console.log("SpO2/FC data:", data);
-                                if (data.SpO2 !== undefined && data.BPM !== undefined) {
-                                    document.getElementById('oximeter-value').innerText = data.SpO2.toFixed(2);
-                                    document.getElementById('bpm-value').innerText = data.BPM.toFixed(2);
+                                if (data.SpO2 !== undefined && data.HR !== undefined) {
+                                    document.getElementById('spo2-value').innerText = data.SpO2.toFixed(2);
+                                    document.getElementById('hr-value').innerText = data.HR.toFixed(2);
                                 }
                             })
                             .catch(error => console.error('Error fetching SpO2/FC data:', error));
@@ -118,8 +118,8 @@
                 if (oximeterInterval) {
                     clearInterval(oximeterInterval);
                     oximeterInterval = null;
-                    document.getElementById('oximeter-value').innerText = '--';
-                    document.getElementById('bpm-value').innerText = '--';
+                    document.getElementById('spo2-value').innerText = '--';
+                    document.getElementById('hr-value').innerText = '--';
                 }
             }
     
