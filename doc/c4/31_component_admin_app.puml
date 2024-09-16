@@ -1,4 +1,4 @@
-@startuml CONTEXT
+@startuml 31_container_adminapp
 !include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
 ' uncomment the following line and comment the first to use locally
 '!include C4_Component.puml
@@ -6,7 +6,7 @@
 title Diagrama de Contexto do Monitor Multiparamétrico
 
 System_Boundary(Interface, "Interface"){
-    Container(user_webApp, "Admin WebApp", "HTML/CSS/JS", "Disponibiliza comandos para iniciar e interromper aferições, exibe os dados dos sensores"){
+    Container(admin_webApp, "Admin WebApp", "HTML/CSS/JS", "Disponibiliza comandos para iniciar e interromper aferições, exibe os dados dos sensores"){
         Component(network, "Configurações de Rede", "Lista de endereços para conexão, inserção de dados para login em redes Wifi, Lista de dispositivos conectados em modo")
         Component(files, "Gerenciamento de arquivos", "HTML/CSS/JS", "Envio, visualização e exclusão de arquivos que são requisitados para a interface do usuário")
     }
