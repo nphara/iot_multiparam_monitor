@@ -1,0 +1,37 @@
+@startuml CONTEXT
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+' uncomment the following line and comment the first to use locally
+'!include C4_Component.puml
+
+title Diagrama de Contexto do Monitor Multiparamétrico
+
+System_Boundary(Interface, "Interface"){
+    Container(user_webApp, "User WebApp", "HTML/CSS/JS", "Disponibiliza comandos para iniciar e interromper aferições, exibe os dados dos sensores"){
+        Component(max30102_sw, "Ativação de SpO2 e de FC", "HTML/CSS/JS", "Chave que ativa/desativa a exibição dos valores de frequência cardíaca e de saturação de oxigênio")
+        Component(SpO2_card, "Valor de SpO2", "HTML/CSS/JS", "Elemento que exibe o valor de saturação de oxigênio (%)")
+        Component(FC_card, "Valor de FC", "HTML/CSS/JS", "Elemento que exibe o valor de frequência cardíaca (bpm)")
+        Component(ad8232_sw, "Ativação do ECG", "HTML/CSS/JS", "Chave que ativa/desativa o gráfico de eletrocardiograma")
+        Component(ECG_chart, "Gráfico do ECG", "HTML/CSS/JS", "Exibe o gráfico de eletrocardiograma")
+    }
+    Container(api, "api", "C", "Processa as requisições do usuário/admin. Disponibiliza endpoints para transferência dos dados dos sensores. Envia comandos para as APIs dos sensores. ")
+    ContainerDb(spiffs, "SPIFFS", "ROM", "Armazena arquivos de definição da interface do usuário (HTML, CSS, JS)")
+}
+System_Ext(SignalsAcq, "Aquisição de sinais", "Aquisição, processamento e transmissão de dados de transdutores de sinais biológicos.")
+
+Lay_L(SpO2_card, FC_card)
+Lay_R(SpO2_card, max30102_sw)
+Lay_R(max30102_sw, ad8232_sw)
+Lay_D(user_webApp, api)
+Lay_D(api, SignalsAcq)
+Lay_R(api, spiffs)
+BiRel_D(max30102_sw, api,"","")
+BiRel_D(ad8232_sw, api,"","")
+Rel(max30102_sw, FC_card,"","")
+Rel(max30102_sw, SpO2_card,"","")
+Rel_U(ad8232_sw, ECG_chart,"","")
+BiRel(api, SignalsAcq,"","")
+BiRel_R(spiffs, api,"","")
+' SHOW_LEGEND(?hideStereotype, ?details)
+SHOW_LEGEND()
+
+@enduml

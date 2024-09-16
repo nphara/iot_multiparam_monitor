@@ -1,0 +1,20 @@
+@startuml CONTEXT
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
+' uncomment the following line and comment the first to use locally
+' !include C4_Component.puml
+
+title Diagrama de Contexto do Monitor Multiparamétrico
+
+Person(user, "Usuário", "De quem se afere os sinais")
+Person(admin, "Operador", "Quem configura e realiza alterações no sistema")
+System(SignalsAcq, "Aquisição de sinais", "Aquisição, processamento e transmissão de dados de transdutores de sinais biológicos.")
+System(Interface, "Interface", "Interface baseada em navegador de internet. Envia comandos para iniciar/interromper a aquisição e mostra os dados. Há uma interface de administrador para configurações de rede e atualização de arquivos que customizam o funcionamento do sistema")
+Rel(user, SignalsAcq, "Utiliza os Transdutores", "Sinais \n biomédicos")
+BiRel_D(admin, Interface, "Configura a aplicação", "HTTP")
+BiRel_D(user, Interface, "Controla a aplicação, visualiza os dados","HTTP")
+BiRel_R(Interface, SignalsAcq, "Transmite dados para a interface e o sistema embarcado", "HTTP")
+
+' SHOW_LEGEND(?hideStereotype, ?details)
+SHOW_LEGEND()
+
+@enduml

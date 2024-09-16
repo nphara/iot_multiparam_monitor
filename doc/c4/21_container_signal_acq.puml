@@ -1,0 +1,24 @@
+@startuml CONTEXT
+!includeurl https://raw.githubusercontent.com/RicardoNiepel/C4-PlantUML/master/C4_Container.puml
+' uncomment the following line and comment the first to use locally
+' !include C4_Component.puml
+
+title "Diagrama de Aplicação da Aquisição de Sinais do Monitor Multiparamétrico"
+
+Person(user, "Usuário", "De quem se afere os sinais")
+Person(admin, "Operador", "Quem configura e realiza alterações no sistema")
+System_Boundary(SignalsAcq, "Aquisição de sinais", "Aquisição, processamento e transmissão de dados de transdutores de sinais biológicos."){
+  Container(max30102, "SpO2/FC API","C","Interface para controlar o transdutor que adquire dados de saturação de oxigênio e frequência cardíaca")
+  Container(ed8232, "ECG API","C","Interface para controlar o transdutor que adquire dados dos ciclos cardíacos")
+}
+System_Ext(Interface, "Interface", "Interface baseada em navegador de internet. Envia comandos para iniciar/interromper a aquisição e mostra os dados. Há uma interface de administrador para configurações de rede e atualização de arquivos que customizam o funcionamento do sistema")
+Rel(user, max30102, "Afere", "Sinais \n biomédicos")
+Rel(user, ed8232, "Afere", "Sinais \n biomédicos")
+BiRel_D(admin, Interface, "Envia arquivos e dados para gravação","HTTP")
+BiRel_D(user, Interface, "Visualiza os dados, controla a aplicação","HTTP")
+BiRel_R(Interface, SignalsAcq, "Envios de sinais de controle, de dados de configuração e valores para exibição", "HTTP")
+
+' SHOW_LEGEND(?hideStereotype, ?details)
+SHOW_LEGEND()
+
+@enduml

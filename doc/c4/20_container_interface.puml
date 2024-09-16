@@ -1,0 +1,30 @@
+@startuml CONTEXT
+!includeurl https://raw.githubusercontent.com/RicardoNiepel/C4-PlantUML/master/C4_Container.puml
+' uncomment the following line and comment the first to use locally
+' !include C4_Component.puml
+
+title Diagrama de Aplicação da Interface do Monitor Multiparamétrico
+
+Person(user, "Usuário", "De quem se afere os sinais")
+Person(admin, "Operador", "Quem configura e realiza alterações no sistema")
+System_Boundary(Interface, "Interface", "Interface baseada em navegador de internet. Envia comandos para iniciar/interromper a aquisição e mostra os dados. Há uma interface de administrador para configurações de rede e atualização de arquivos que customizam o funcionamento do sistema"){
+  Container(user_webApp, "User WebApp", "HTML/CSS/JS", "Disponibiliza comandos para iniciar e interromper aferições, exibe os dados dos sensores")
+  Container(admin_webApp, "Admin WebApp", "HTML/CSS/JS", "Permite carregar e extrair arquivos de projeto para a interface, configura a rede")
+  Container(api, "api", "C", "Processa as requisições do usuário/admin. Disponibiliza endpoints para transferência dos dados dos sensores. Envia comandos para as APIs dos sensores. ")
+}
+ContainerDb(spiffs, "SPIFFS", "ROM", "Armazena arquivos de definição da interface do usuário (HTML, CSS, JS)")
+System_Ext(SignalsAcq, "Aquisição de sinais", "Aquisição, processamento e transmissão de dados de transdutores de sinais biológicos.")
+
+Rel(user, SignalsAcq, "Afere", "Sinais \n biomédicos")
+BiRel_D(admin, admin_webApp, "Configura a interface e conexões WiFi", "HTTP")
+BiRel_D(user, user_webApp, "Visualiza os dados, controla a aplicação","HTTP")
+BiRel_D(user_webApp, api, "Requisita dados dos sensores","HTTP")
+BiRel_D(admin_webApp, api, "Envia arquivos e dados para gravação","HTTP")
+' BiRel_D(admin_webApp, spiffs, "Recebe/Transmite","HTTP")
+BiRel_L(api, SignalsAcq, "Envios de sinais de controle, de dados de configuração e valores para exibição", "HTTP")
+Rel_L(spiffs, api, "Arquivos para a interface","HTTP")
+
+' SHOW_LEGEND(?hideStereotype, ?details)
+SHOW_LEGEND()
+
+@enduml
