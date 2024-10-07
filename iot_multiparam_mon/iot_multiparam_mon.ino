@@ -326,8 +326,8 @@ void handle_Max30102Control(AsyncWebServerRequest *request) {
 
 void handle_Max30102_Data(AsyncWebServerRequest *request) {
     // Replace these dummy values with actual sensor data
-    float SpO2value = 98.5;  // Example SpO2 value
-    float HRvalue = 72.3;   // Example BPM value
+    // float SpO2value = 98.5;  // Example SpO2 value
+    // float HRvalue = 72.3;   // Example BPM value
 
     String json = "{";
     json += "\"SpO2\":" + String(SpO2value) + ",";
@@ -335,13 +335,13 @@ void handle_Max30102_Data(AsyncWebServerRequest *request) {
     json += "}";
 
     // Monitor heap size before sending the response
-    // Serial.printf("[INFO] Heap before sending MAX30102 data: %d bytes\n", ESP.getFreeHeap());
+    Serial.printf("[INFO] Heap before sending MAX30102 data: %d bytes\n", ESP.getFreeHeap());
 
     // Send the JSON response for SpO2 and BPM
     request->send(200, "application/json", json);
 
     // Optionally, monitor heap size after
-    // Serial.printf("[INFO] Heap after sending MAX30102 data: %d bytes\n", ESP.getFreeHeap());
+     Serial.printf("[INFO] Heap after sending MAX30102 data: %d bytes\n", ESP.getFreeHeap());
 }
 
 void handle_Ad8232Control(AsyncWebServerRequest *request) {

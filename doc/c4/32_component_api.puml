@@ -6,7 +6,7 @@
 title Diagrama de Contexto do Monitor Multiparamétrico
 
 System_Boundary(Interface, "Interface"){
-    Container(user_webApp, "User WebApp", "HTML/CSS/JS", "Disponibiliza comandos para iniciar e interromper aferições, exibe os dados dos sensores"){
+    Container(api, "API", "C", "Disponibiliza comandos para iniciar e interromper aferições, exibe os dados dos sensores"){
         Component(max30102_sw, "Ativação de SpO2 e de FC", "HTML/CSS/JS", "Chave que ativa/desativa a exibição dos valores de frequência cardíaca e de saturação de oxigênio")
         Component(SpO2_card, "Valor de SpO2", "HTML/CSS/JS", "Elemento que exibe o valor de saturação de oxigênio (%)")
         Component(FC_card, "Valor de FC", "HTML/CSS/JS", "Elemento que exibe o valor de frequência cardíaca (bpm)")
